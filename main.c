@@ -24,7 +24,7 @@
  *                      *
  ************************/
 #define KI 0x0008
-#define VREF 0x2000
+#define VREF 0x02000000
 #define _ISR __attribute__((__interrupt__,__auto_psv__))
 
 /**************************
@@ -37,7 +37,7 @@ void clear_buffers(void);
 void init_adc(void);
 void init_pwm(void);
 void start_ramp_up(void);
-void updatePWM(_Q16 x);
+void updatePWM(int x);
 extern _Q16 readADC(void);
 extern int round_Q16_2_int(_Q16 x);
 
@@ -58,6 +58,7 @@ void _ISR _PWMSpEventMatchInterrupt(void);
 _FOSCSEL(FRC_PLL)
 _FWDT(FWDTEN_OFF)
 _FPOR(PWRT_4)
+_FOSC(PRIOSC_OFF & FRC_HI_RANGE)
 /**************************
  *                      	*
  *   	Global Variables   	*
@@ -65,7 +66,7 @@ _FPOR(PWRT_4)
  *************************/
 //filter coefficients
 #include "IIR_Coeffs.txt"
-_Q16 ref = 8; //reference signal set low to allow for ramp up
+_Q16 ref = 0x00080000; //reference signal set low to allow for ramp up
 _Q16 y;
 _Q16 u;
 _Q16 error[N];
@@ -74,24 +75,23 @@ _Q16 error[N];
 /*
  * 
  */
-int main(int argc, char** argv) {
+void main(void) {
 
     init_core();
     clear_buffers();
-    //init_adc();
-    //init_pwm();
+    init_adc();
+    init_pwm();
     start_ramp_up();
-    TRISB = 0x0;
-    PORTB = 0x0;
+   // TRISB = 0x0;
+   // PORTB = 0x0;
 
     while(1){
-	updatePWM(ref);
-        PORTA++;
+		//updatePWM(ref);
+ 	   // PORTB++;
+		updatePWM(250);
 
     }
 
-
-    return (EXIT_SUCCESS);
 }
 
 void init_core(void){
@@ -117,6 +117,7 @@ void init_adc(void){
     ADPCFGbits.PCFG0 = 0; // set to analog port
     ADCONbits.FORM = 0;//ADC outputs integer number
     ADCONbits.EIE = 1;// enable interrupt on converstion 1
+	IEC0bits.ADIE = 1;
     ADCONbits.ADCS = 3;// clock ADC at 13.3MHz
     ADSTAT = 0; // clear ADSTAT
     ADCPC0bits.IRQEN0 = 1;
@@ -127,24 +128,19 @@ void init_adc(void){
 }
 
 void init_pwm(void){
-    
-    PTPERbits.PTPER = 0x4AF; // set PWM freq = 100kHz
-    SEVTCMPbits.SEVTCMP = 0x257;//set special trigger for half way through PWM period
-    //used for update of I compensator
-    IOCON1bits.PENH = 1; //enable PWMH
-    IOCON1bits.PENL = 1; //enable PWML
-    IOCON1bits.POLH = 0; //PWMH active high
-    IOCON1bits.POLL = 0; //PWML active low
-    IOCON1bits.PMOD = 0; // Complementary Output pair
-		IOCON1bits.OVRENH = 1; //set PWMH to override
-		IOCON1bits.OVRDAT = 0; //set sync MOSFET to off
-    TRIG1 = 0x0008;      // Sets trigger to almost the beginning of the PWM cycle
-    PWMCON1bits.MDCS = 1;// Sets Duty cycle to as low as possible.
-    PWMCON1bits.DTC = 0;
-    PWMCON1bits.IUE = 0;
-    PWMCON1bits.TRGIEN = 1;
-		MDC = 0x0008;
-    DTR1 = 120;
+   	PTCON = 0x0800;
+	PTPER = 0x2534;
+	PHASE1 = 0x0000;
+	PWMCON1 = 0x0001;
+	FCLCON1 = 0x0003;
+	IOCON1 = 0x4000;
+	TRISEbits.TRISE1 = 0;
+	PORTEbits.RE1 = 0;
+	PDC1 = 0x04A6;
+	DTR1 = 0x0040;
+	ALTDTR1 = 0x0040;
+	TRIG1 = 0x00FF;
+	PTCONbits.PTEN = 1;
 
 }
 
@@ -158,17 +154,21 @@ void start_ramp_up(void){
 
 void updatePWM(_Q16 x){
 	
-	if(x<8){
-		MDC = 8;
+	int int_x;
+
+	int_x = (signed) round_Q16_2_int(x)  	
+
+	if(int_x<8){
+		PDC1 = 8;
 		return;
 		
 	}
-	if(x>66519){
-		MDC = 66519;
+	if(int_x>9504){
+		PDC1 = 9504;
 		return;
 	}
 
-	MDC = round_Q16_2_int(x);
+	PDC1 = int_x;
 		return;
 	
 	
@@ -178,30 +178,29 @@ void updatePWM(_Q16 x){
 
 void _ISR _ADCInterrupt(void){
 
-	IFS0bits.ADIF = 0;  
-	y = readADC();
-    
-}
-
-void _ISR _PWMSpEventMatchInterrupt(void){
-
-    
 	_Q16 error_in;
-        int i;
-	IFS1bits.PSEMIF = 0;
+	int i;
+
+	IFS0bits.ADIF = 0;  
+	ADSTAT = 0;
+	y = readADC();
+	error_in =  ref - y;
 	
-		error_in =  ref - y;
-	
-		error[0] = error_in;
-		for(i=N-1; i>0; i--)
-		{
-			error[0] -= a[i]*error[i];
-			u += b[i]*error[i];
-			error[i] = error[i-1];
-		}
-		u += b[0]*error[0];
-	
+	error[0] = error_in;
+	for(i=N-1; i>0; i--)
+	{
+		//_Q16mac(-a[i], error[i], error[0]);
+		error[0] -= error[i]*a[i];
+		//_Q16mac(b[i],error[i],u);
+		u += error[i]*b[i];
+		error[i] = error[i-1];
+	}
+	//_Q16mac(b[0], error[0], u);
+	u += error[0]*b[0];
+    
 }
+
+
 
 void _ISR _T1Interrupt(void){
 	
@@ -210,7 +209,7 @@ void _ISR _T1Interrupt(void){
         {  //if ref reaches ref point
             T1CONbits.TON = 0; //stop soft start
 	}else{
-            ref++; //else increment ref
+           ref = ref + 0x00010000; //else increment ref
 	}
 	
 }

@@ -3,7 +3,7 @@
 
 _readADC:
     MOV 0, W0
-		MOV ADCBUF0, W1
+	MOV ADCBUF0, W1
     RETURN
 
 .global _round_Q16_2_int
