@@ -37,7 +37,7 @@ void clear_buffers(void);
 void init_adc(void);
 void init_pwm(void);
 void start_ramp_up(void);
-void updatePWM(int x);
+void updatePWM(_Q16 x);
 extern _Q16 readADC(void);
 extern int round_Q16_2_int(_Q16 x);
 
@@ -156,7 +156,7 @@ void updatePWM(_Q16 x){
 	
 	int int_x;
 
-	int_x = (signed) round_Q16_2_int(x)  	
+	int_x = (signed) round_Q16_2_int(x); 	
 
 	if(int_x<8){
 		PDC1 = 8;
