@@ -85,10 +85,11 @@ void main(void) {
    // TRISB = 0x0;
    // PORTB = 0x0;
 
+		PDC1 = 0x1290;
     while(1){
 		//updatePWM(ref);
  	   // PORTB++;
-		updatePWM(250);
+		//updatePWM(250);
 
     }
 
@@ -133,7 +134,7 @@ void init_pwm(void){
 	PHASE1 = 0x0000;
 	PWMCON1 = 0x0001;
 	FCLCON1 = 0x0003;
-	IOCON1 = 0x4000;
+	IOCON1 = 0xC000;
 	TRISEbits.TRISE1 = 0;
 	PORTEbits.RE1 = 0;
 	PDC1 = 0x04A6;
