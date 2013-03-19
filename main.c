@@ -23,7 +23,7 @@
  *     Definitions      *
  *                      *
  ************************/
-#define KI 0x0008
+#define KI 0x0001
 #define VREF 0x02000000
 #define _ISR __attribute__((__interrupt__,__auto_psv__))
 #define PWM_FULLSCALE 0x2534
@@ -37,9 +37,10 @@ void clear_buffers(void);
 void init_adc(void);
 void init_pwm(void);
 void start_ramp_up(void);
-void updatePWM(_Q16 x);
-extern _Q16 readADC(void);
+void updatePWM(signed int x);
+extern _Q15 readADC(void);
 extern int round_Q16_2_int(_Q16 x);
+extern signed int I_controller_update(signed int, signed int);
 
 
 /**************************
@@ -49,6 +50,7 @@ extern int round_Q16_2_int(_Q16 x);
  *************************/
 void _ISR _ADCInterrupt(void);
 void _ISR _PWMSpEventMatchInterrupt(void);
+void _ISR _INT1Interrupt(void);
 
 /**************************
  *                      	*
@@ -66,10 +68,11 @@ _FOSC(PRIOSC_OFF & FRC_HI_RANGE)
  *************************/
 //filter coefficients
 #include "IIR_Coeffs.txt"
-_Q16 ref = 0x00080000; //reference signal set low to allow for ramp up
-_Q16 y;
-_Q16 u;
-_Q16 error[N];
+signed int ref = 0x8000; //reference signal set low to allow for ramp up
+signed int y;
+signed int u[2];
+int overflow;
+//_Q16 error[N];
 
 
 /*
@@ -85,12 +88,17 @@ void main(void) {
    // TRISB = 0x0;
    // PORTB = 0x0;
 
-		PDC1 = PWM_FULLSCALE - 0x15B3;
+
     while(1){
 		//updatePWM(ref);
  	   // PORTB++;
-		//updatePWM(250);
+		updatePWM(u[0]);
+	//	ref++;
 
+		if(!PORTAbits.RA9){
+			IOCON1bits.PENH = 0;
+			IOCON1bits.PENL = 0;
+		}
     }
 
 }
@@ -99,15 +107,22 @@ void init_core(void){
 
     CORCONbits.IF = 0;
     CORCONbits.US = 0;
+	CORCONbits.SATA = 1;
+	CORCONbits.SATB = 1;
+	CORCONbits.ACCSAT = 1;
+	CORCONbits.SATDW = 1;
+	CORCONbits.RND = 0;
+	INTCON2bits.INT1EP = 1;
+	IEC1bits.INT1IE = 1;
+	TRISDbits.TRISD0 = 1;
  
 }
 
 void clear_buffers(void){
     int i;
 
-    for(i=0; i<N; i++){
-        error[i] = 0;
-    }
+    u[0] = 0;
+	u[1] = 0;
 
 }
 
@@ -153,23 +168,20 @@ void start_ramp_up(void){
 	
 }
 
-void updatePWM(_Q16 x){
+void updatePWM(signed int x){
 	
-	int int_x;
 
-	int_x = (signed) round_Q16_2_int(x); 	
-
-	if(int_x<8){
-		PDC1 = 8;
+	if(x<950){
+		PDC1 =  PWM_FULLSCALE - 950;
 		return;
 		
 	}
-	if(int_x>7619){
-		PDC1 = 7619;
+	if(x>7619){
+		PDC1 = PWM_FULLSCALE - 7619;
 		return;
 	}
 
-	PDC1 = int_x;
+	PDC1 = PWM_FULLSCALE - x;
 		return;
 	
 	
@@ -179,7 +191,7 @@ void updatePWM(_Q16 x){
 
 void _ISR _ADCInterrupt(void){
 
-	_Q16 error_in;
+	signed int error_in;
 	int i;
 
 	IFS0bits.ADIF = 0;  
@@ -187,18 +199,9 @@ void _ISR _ADCInterrupt(void){
 	y = readADC();
 	error_in =  ref - y;
 	
-	error[0] = error_in;
-	for(i=N-1; i>0; i--)
-	{
-		//_Q16mac(-a[i], error[i], error[0]);
-		error[0] -= error[i]*a[i];
-		//_Q16mac(b[i],error[i],u);
-		u += error[i]*b[i];
-		error[i] = error[i-1];
-	}
-	//_Q16mac(b[0], error[0], u);
-	u += error[0]*b[0];
-    
+	u[1] = u[0];
+//	u[0] = u[1] + KI*error_in;
+	u[0] = I_controller_update(u[1], error_in); 
 }
 
 
@@ -215,6 +218,16 @@ void _ISR _T1Interrupt(void){
 	
 }
 
+void _ISR _INT1Interrupt(void){
+	
+	IOCON1bits.PENH = 0;
+	IOCON1bits.PENL = 0;
+	TRISEbits.TRISE0 = 0;
+	TRISEbits.TRISE1 = 0;
+	PORTEbits.RE0 = 0;
+	PORTEbits.RE1 = 1;
+	IFS1bits.INT1IF = 0;
+}
 
 
 
