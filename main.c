@@ -26,7 +26,7 @@
 #define KI 0x0008
 #define VREF 0x02000000
 #define _ISR __attribute__((__interrupt__,__auto_psv__))
-
+#define PWM_FULLSCALE 0x2534
 /**************************
  *                     	 	*
  * C Function Prototypes 	*
@@ -85,7 +85,7 @@ void main(void) {
    // TRISB = 0x0;
    // PORTB = 0x0;
 
-		PDC1 = 0x1290;
+		PDC1 = PWM_FULLSCALE - 0x15B3;
     while(1){
 		//updatePWM(ref);
  	   // PORTB++;
@@ -135,11 +135,11 @@ void init_pwm(void){
 	PWMCON1 = 0x0001;
 	FCLCON1 = 0x0003;
 	IOCON1 = 0xC000;
-	TRISEbits.TRISE1 = 0;
-	PORTEbits.RE1 = 0;
+//	TRISEbits.TRISE1 = 0;
+//	PORTEbits.RE1 = 0;
 	PDC1 = 0x04A6;
-	DTR1 = 0x0040;
-	ALTDTR1 = 0x0040;
+	DTR1 = 0x0100;
+	ALTDTR1 = 0x0100;
 	TRIG1 = 0x00FF;
 	PTCONbits.PTEN = 1;
 
@@ -164,8 +164,8 @@ void updatePWM(_Q16 x){
 		return;
 		
 	}
-	if(int_x>9504){
-		PDC1 = 9504;
+	if(int_x>7619){
+		PDC1 = 7619;
 		return;
 	}
 
