@@ -24,7 +24,7 @@
  *                      *
  ************************/
 #define KI 0x0001
-#define VREF 0x02000000
+#define VREF 0x0200
 #define _ISR __attribute__((__interrupt__,__auto_psv__))
 #define PWM_FULLSCALE 0x2534
 /**************************
@@ -68,10 +68,12 @@ _FOSC(PRIOSC_OFF & FRC_HI_RANGE)
  *************************/
 //filter coefficients
 #include "IIR_Coeffs.txt"
-signed int ref = 0x8000; //reference signal set low to allow for ramp up
+signed int ref = 1; //reference signal set low to allow for ramp up
 signed int y;
 signed int u[2];
 int overflow;
+int closed_loop;
+int pwm_value;
 //_Q16 error[N];
 
 
@@ -85,6 +87,7 @@ void main(void) {
     init_adc();
     init_pwm();
     start_ramp_up();
+	closed_loop = 0;
    // TRISB = 0x0;
    // PORTB = 0x0;
 
@@ -92,12 +95,14 @@ void main(void) {
     while(1){
 		//updatePWM(ref);
  	   // PORTB++;
-		updatePWM(u[0]);
+		
+		
+			updatePWM(u[0]);
 	//	ref++;
 
-		if(!PORTAbits.RA9){
-			IOCON1bits.PENH = 0;
-			IOCON1bits.PENL = 0;
+		if(!PORTDbits.RD0){
+			IOCON1bits.PENH = 1;
+			IOCON1bits.PENL = 1;
 		}
     }
 
@@ -112,7 +117,7 @@ void init_core(void){
 	CORCONbits.ACCSAT = 1;
 	CORCONbits.SATDW = 1;
 	CORCONbits.RND = 0;
-	INTCON2bits.INT1EP = 1;
+	INTCON2bits.INT1EP = 0;
 	IEC1bits.INT1IE = 1;
 	TRISDbits.TRISD0 = 1;
  
@@ -138,6 +143,8 @@ void init_adc(void){
     ADSTAT = 0; // clear ADSTAT
     ADCPC0bits.IRQEN0 = 1;
     ADCPC0bits.TRGSRC0 = 4; //start conversion on PWM generator #1
+	TRGCON1bits.TRGDIV = 0b111;
+	
     
     ADCONbits.ADON = 1; //turns on ADC
 
@@ -170,7 +177,10 @@ void start_ramp_up(void){
 
 void updatePWM(signed int x){
 	
-
+/*	if(x<0){
+		PDC1 = 0;
+		return;
+	}*/
 	if(x<950){
 		PDC1 =  PWM_FULLSCALE - 950;
 		return;
@@ -209,11 +219,14 @@ void _ISR _ADCInterrupt(void){
 void _ISR _T1Interrupt(void){
 	
 	IFS0bits.T1IF = 0; //clear interrupt flag
-	if (ref == VREF)
+	if (ref > VREF)
         {  //if ref reaches ref point
             T1CONbits.TON = 0; //stop soft start
+			closed_loop = 1;
 	}else{
-           ref = ref + 0x00010000; //else increment ref
+           ref = ref + 1; //else increment ref
+			pwm_value = 4000;
+			closed_loop = 0;
 	}
 	
 }
